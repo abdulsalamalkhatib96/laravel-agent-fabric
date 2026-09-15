@@ -1,5 +1,4 @@
 name: Publish Laravel Agent Fabric V2
-# final verified publish
 
 on:
   push:
@@ -25,8 +24,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find .bootstrap -maxdepth 1 -name 'patch-*.b64' | wc -l | tr -d ' ')" = "12"
-          cat .bootstrap/patch-*.b64 | tr -d '\n\r' | base64 -d > /tmp/agent-fabric-v2.patch.tar.gz
+          parts=(
+            .bootstrap/patch-000.b64
+            .bootstrap/patch-001.b64
+            .bootstrap/patch-002.b64
+            .bootstrap/patch-003.b64
+            .bootstrap/patch-004.b64
+            .bootstrap/patch-005.b64
+            .bootstrap/patch-006a.b64
+            .bootstrap/patch-006b.b64
+            .bootstrap/patch-007a.b64
+            .bootstrap/patch-007b.b64
+            .bootstrap/patch-008.b64
+            .bootstrap/patch-009.b64
+            .bootstrap/patch-010.b64
+            .bootstrap/patch-011.b64
+          )
+
+          : > /tmp/agent-fabric-v2.patch.b64
+          for file in "${parts[@]}"; do
+            test -f "$file"
+            tr -d '\n\r' < "$file" >> /tmp/agent-fabric-v2.patch.b64
+          done
+
+          base64 -d /tmp/agent-fabric-v2.patch.b64 > /tmp/agent-fabric-v2.patch.tar.gz
           echo "d39adc6aa12d94ca32a4dba47643f8dcf2c18a262986ed8eec3ffb0cf63b45e5  /tmp/agent-fabric-v2.patch.tar.gz" | sha256sum -c -
           gzip -t /tmp/agent-fabric-v2.patch.tar.gz
           rm -rf /tmp/agent-fabric-v2-patch
