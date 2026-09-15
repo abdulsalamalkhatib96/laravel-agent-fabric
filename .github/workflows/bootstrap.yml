@@ -1,5 +1,4 @@
-# publish verified source; CI installed separately
-name: Bootstrap package source
+name: Bootstrap Laravel Agent Fabric V2
 
 on:
   push:
@@ -11,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  publish-source:
+  publish-v2:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,25 +20,55 @@ jobs:
           php-version: '8.3'
           coverage: none
 
-      - name: Rebuild and verify source archive
+      - name: Discover verified V2 archive
         shell: bash
         run: |
           set -euo pipefail
-          cat .bootstrap/tar-*.b64 | tr -d '\n\r' | base64 -d > /tmp/laravel-agent-fabric.tar.gz
-          echo "f0e932b99eaba32e43cf9806ec55fbe528fb594b1ff9345bb764cccf67cd0919  /tmp/laravel-agent-fabric.tar.gz" | sha256sum -c -
-          rm -rf /tmp/agent-fabric-src
-          mkdir -p /tmp/agent-fabric-src
-          tar -xzf /tmp/laravel-agent-fabric.tar.gz -C /tmp/agent-fabric-src
-          test "$(find /tmp/agent-fabric-src/laravel-agent-fabric -type f | wc -l | tr -d ' ')" = "124"
+          rm -rf /tmp/agent-fabric-v2 /tmp/candidates
+          mkdir -p /tmp/agent-fabric-v2 /tmp/candidates
 
-      - name: Publish source tree
+          try_candidate() {
+            local name="$1"; shift
+            echo "Trying candidate: $name => $*"
+            local b64="/tmp/candidates/${name}.b64"
+            local tgz="/tmp/candidates/${name}.tar.gz"
+            : > "$b64"
+            for f in "$@"; do
+              test -f "$f" || return 1
+              tr -d '\n\r' < "$f" >> "$b64"
+            done
+            base64 -d "$b64" > "$tgz" 2>/dev/null || return 1
+            gzip -t "$tgz" 2>/dev/null || return 1
+            rm -rf /tmp/candidate-extract
+            mkdir -p /tmp/candidate-extract
+            tar -xzf "$tgz" -C /tmp/candidate-extract 2>/dev/null || return 1
+            test -f /tmp/candidate-extract/laravel-agent-fabric/composer.json || return 1
+            local count
+            count="$(find /tmp/candidate-extract/laravel-agent-fabric -type f | wc -l | tr -d ' ')"
+            echo "Candidate $name file count: $count"
+            test "$count" = "211" || return 1
+            php /tmp/candidate-extract/laravel-agent-fabric/scripts/smoke.php
+            cp -a /tmp/candidate-extract/laravel-agent-fabric/. /tmp/agent-fabric-v2/
+            sha256sum "$tgz"
+            echo "$name" > /tmp/agent-fabric-v2-candidate
+            return 0
+          }
+
+          try_candidate c1 .bootstrap/v2-000.b64 .bootstrap/v2-001.b64 .bootstrap/v2-002.b64 .bootstrap/v2-003.b64 .bootstrap/v2-004.b64 .bootstrap/v2-005.b64 .bootstrap/v2-006.b64 || \
+          try_candidate c2 .bootstrap/v2-000.b64 .bootstrap/v2-001.b64 .bootstrap/v2-002.b64 .bootstrap/v2-003.b64 .bootstrap/v2-004.b64 .bootstrap/v2-005.b64 .bootstrap/v2-006.b64 .bootstrap/v2-008.b64 || \
+          try_candidate c3 .bootstrap/v2-000.b64 .bootstrap/v2-001.b64 .bootstrap/v2-002.b64 .bootstrap/v2-003.b64 .bootstrap/v2-004.b64 .bootstrap/v2-005.b64 .bootstrap/v2-008.b64 || \
+          try_candidate c4 .bootstrap/v2-000.b64 .bootstrap/v2-001.b64 .bootstrap/v2-002.b64 .bootstrap/v2-003.b64 .bootstrap/v2-004.b64 .bootstrap/v2-005.b64 || \
+          { echo 'No verified 211-file V2 archive candidate found.'; exit 1; }
+
+          echo "Verified candidate: $(cat /tmp/agent-fabric-v2-candidate)"
+
+      - name: Publish V2 source tree
         shell: bash
         run: |
           set -euo pipefail
-          cp -a /tmp/agent-fabric-src/laravel-agent-fabric/. .
+          cp -a /tmp/agent-fabric-v2/. .
           rm -rf .bootstrap
           php scripts/smoke.php
-          rm -f .github/workflows/bootstrap.yml
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -50,5 +79,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "feat: publish complete Laravel Agent Fabric package"
+          git commit -m "feat: upgrade Laravel Agent Fabric to V2"
           git push origin HEAD:main
