@@ -1,76 +1,64 @@
 # Architecture
 
-## Planes
+Laravel Agent Fabric V2 is a kernel plus extension ecosystem.
 
 ```text
-Application
-  |
-  +-- Agent definitions / Skills / Policies
-  |
-Agent Fabric Runtime
-  +-- Durable Run + Step Store
-  +-- Model Router -> Laravel AI Gateway
-  +-- Knowledge Retriever -> Embeddings / Knowledge Store
-  +-- Tool Executor -> Authorization -> Approval -> Idempotency
-  +-- Memory
-  +-- Budget / Loop Controls
-  +-- Verification / Evidence
-  +-- Eval / Feedback / Audit
-  |
-Laravel AI SDK
-  |
-AI providers / OpenAI-compatible endpoints
+Application / SaaS / Ecommerce / CRM / ERP
+                 |
+          Agent Fabric API
+                 |
+ +---------------+----------------+
+ |               |                |
+Agents        Workflows        Governance
+ |               |                |
+ +----------- Capability Router --+
+                 |
+             Laravel AI
+                 |
+            AI Providers
+
+Side planes:
+Connectors | Channels | MCP | A2A | Knowledge | Memory | Evals | Traces | Deployments
 ```
 
-## Runtime protocol
+## Authority model
 
-Agent Fabric uses a provider-independent JSON control envelope:
+The model has **decision authority only**, never implicit business authority. Business authority lives in PHP tools, connectors, policies, workflow handlers, delegated identity, and approval rules.
 
-```json
-{"type":"tool","tool":"find_order","arguments":{"order_id":"551"}}
-```
+## Volatile state
 
-or:
+Live state belongs behind runtime tools/connectors. Stable knowledge belongs in RAG. A model should not be fine-tuned on current balances, stock, or order state.
 
-```json
-{"type":"final","answer":"...","memory":[]}
-```
-
-or `clarify` / `escalate`. This keeps the orchestration layer independent from provider-specific tool APIs. `ModelGateway` can be replaced with a provider-native structured-output implementation without changing the runtime.
-
-## Execution lifecycle
+## Execution
 
 ```text
-create run
-  -> enforce start policies
-  -> retrieve tenant-scoped knowledge
-  -> recall memory
-  -> route model by capabilities/score
-  -> model call
-  -> parse envelope
-      -> tool: schema -> authorize -> approval? -> idempotent claim -> execute
-      -> clarify: persist waiting_for_user
-      -> escalate: return human handoff
-      -> final: verify evidence -> persist memory -> complete
+create durable run
+ -> policy checks
+ -> tenant-scoped retrieval + memory
+ -> capability/data-policy model routing
+ -> model control envelope
+    -> query tool
+    -> command tool
+    -> remote operation
+    -> deterministic workflow
+    -> clarification/escalation
+ -> evidence verification
+ -> persist result + trace + usage
 ```
 
-Each model/tool/verification operation becomes a persisted step.
+## Sensitive workflows
 
-## Failure semantics
+Financial/destructive sequences should move from free-form agent loops to `WorkflowDefinition`. Workflows persist dependencies, pause at human gates, resume, cancel, and compensate completed steps best-effort. Remote ambiguity should be reconciled rather than blindly retried.
 
-- transient model failure: gateway/provider failover can be added behind `ModelGateway`
-- policy denial: fail closed
-- approval required: pause, do not execute
-- rejected approval: resume with a rejection observation
-- tool failure: feed result back to the agent
-- ambiguous irreversible tool result: stop in `ambiguous`; do not blind retry
-- max steps/cost/tool calls: stop by budget control
-- worker/process loss: persisted run/steps provide the continuation source of truth
+## Extension model
 
-## Data freshness
+Vendor integrations belong in plugins/domain packs. A plugin can register agents, connectors, channels, and workflows through `PluginContext`. This keeps core contracts stable while allowing vertical-specific packages.
 
-Use RAG for policies/docs/catalog-like knowledge. Use tools for current balances, order state, inventory and other volatile/authoritative data.
+## Interoperability
 
-## Scaling knowledge search
+- MCP: tools/resources
+- A2A: agent delegation
+- Connector SDK: application/business systems
+- Channel SDK: inbound/outbound conversation surfaces
 
-The included retriever is database-portable and intentionally bounded. It is appropriate for initial deployments and smaller knowledge sets. Large corpora should bind `Retriever` to a native vector implementation. The storage/runtime contracts were designed so that this is a binding change rather than a rewrite of agents.
+Transport and vendor authentication are adapter responsibilities.

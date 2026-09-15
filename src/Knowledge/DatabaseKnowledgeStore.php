@@ -22,9 +22,9 @@ final class DatabaseKnowledgeStore implements KnowledgeStore
         return $this->db->transaction(function () use ($document, $chunks): string {
             $identity=['tenant_id'=>(string)$document->tenantId,'source_type'=>$document->sourceType,'source_key'=>$document->sourceKey];
             $candidateId=(string)Str::uuid();
-            $this->db->table('ai_knowledge_documents')->insertOrIgnore(['id'=>$candidateId,'title'=>$document->title,'content'=>$document->content,'content_hash'=>$document->contentHash(),'metadata'=>json_encode($document->metadata),'security_level'=>$document->securityLevel,'source_updated_at'=>$document->sourceUpdatedAt,'indexed_at'=>now(),'created_at'=>now(),'updated_at'=>now()]+$identity);
+            $this->db->table('ai_knowledge_documents')->insertOrIgnore(['id'=>$candidateId,'title'=>$document->title,'content'=>$document->content,'content_hash'=>$document->contentHash(),'metadata'=>json_encode($document->enrichedMetadata()),'security_level'=>$document->securityLevel,'source_updated_at'=>$document->sourceUpdatedAt,'indexed_at'=>now(),'created_at'=>now(),'updated_at'=>now()]+$identity);
             $id=(string)$this->db->table('ai_knowledge_documents')->where($identity)->value('id');
-            $payload=['title'=>$document->title,'content'=>$document->content,'content_hash'=>$document->contentHash(),'metadata'=>json_encode($document->metadata),'security_level'=>$document->securityLevel,'source_updated_at'=>$document->sourceUpdatedAt,'indexed_at'=>now(),'updated_at'=>now()];
+            $payload=['title'=>$document->title,'content'=>$document->content,'content_hash'=>$document->contentHash(),'metadata'=>json_encode($document->enrichedMetadata()),'security_level'=>$document->securityLevel,'source_updated_at'=>$document->sourceUpdatedAt,'indexed_at'=>now(),'updated_at'=>now()];
             $this->db->table('ai_knowledge_documents')->where('id',$id)->update($payload);
             $this->db->table('ai_knowledge_chunks')->where('document_id', $id)->delete();
             foreach ($chunks as $chunk) {

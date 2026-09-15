@@ -4,6 +4,8 @@ namespace Evolvex\AgentFabric\Tools;
 
 use Evolvex\AgentFabric\Contracts\ApprovalManager;
 use Evolvex\AgentFabric\Contracts\ToolAuthorizer;
+use Evolvex\AgentFabric\Contracts\GovernedTool;
+use Evolvex\AgentFabric\Enums\ToolKind;
 use Evolvex\AgentFabric\Data\AgentContext;
 use Evolvex\AgentFabric\Data\ToolResult;
 use Evolvex\AgentFabric\Exceptions\ApprovalRequiredException;
@@ -19,6 +21,12 @@ final class ToolExecutor
     public function execute(string $runId, ToolRegistry $registry, string $toolName, AgentContext $context, array $arguments, ?string $approvalId = null): ToolResult
     {
         $tool=$registry->get($toolName); $this->validator->validate($tool->inputSchema(),$arguments);
+        if($tool instanceof GovernedTool){
+            $tool->before($context,$arguments);
+            if(($context->metadata['execution_mode']??'live')==='simulate' && in_array($tool->kind(),[ToolKind::Command,ToolKind::RemoteOperation],true)){
+                return ToolResult::success(['simulated'=>true,'tool'=>$toolName,'arguments'=>$arguments],'Simulation mode: side effect not executed.',[]);
+            }
+        }
         $auth=$this->authorizer->authorize($tool,$context,$arguments); if(!$auth->allowed) throw new ToolAuthorizationException($auth->reason??'Tool call denied.');
         if ($approvalId===null) {
             $approval=$this->approvals->evaluate($tool,$context,$arguments);
@@ -46,7 +54,7 @@ final class ToolExecutor
             $id=(string)$existing->id;
         }
         try {
-            $result=$tool->execute($context,$arguments); $status=$result->ambiguous?'ambiguous':($result->success?'succeeded':'failed');
+            $result=$tool->execute($context,$arguments); if($tool instanceof GovernedTool)$tool->after($context,$arguments,$result); $status=$result->ambiguous?'ambiguous':($result->success?'succeeded':'failed');
             $this->db->table('ai_tool_executions')->where('id',$id)->update(['status'=>$status,'result'=>json_encode($result->data),'message'=>$result->message,'evidence'=>json_encode($result->evidence),'finished_at'=>now(),'updated_at'=>now()]); return $result;
         } catch(Throwable $e){
             $this->db->table('ai_tool_executions')->where('id',$id)->update(['status'=>'failed','message'=>$e->getMessage(),'finished_at'=>now(),'updated_at'=>now()]); throw $e;

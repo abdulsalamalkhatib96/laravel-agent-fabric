@@ -14,7 +14,11 @@ final class PendingAgentRun
     public function __construct(private readonly AgentBlueprint $agent, private readonly AgentRuntime $runtime) {}
     public function tenant(string|int $id): self { $c=clone $this; $c->tenantId=$id; return $c; }
     public function actor(string|int|null $id, ?string $type=null): self { $c=clone $this; $c->actorId=$id; $c->actorType=$type; return $c; }
-    public function metadata(array $metadata): self { $c=clone $this; $c->metadata=$metadata; return $c; }
+    public function metadata(array $metadata): self { $c=clone $this; $c->metadata=array_replace($c->metadata,$metadata); return $c; }
+    public function simulate(bool $enabled=true): self { return $this->metadata(['execution_mode'=>$enabled?'simulate':'live']); }
+    public function dataClassification(string $classification): self { return $this->metadata(['data_classification'=>$classification]); }
+    public function region(string $region): self { return $this->metadata(['required_region'=>$region]); }
+    public function requireZeroRetention(bool $required=true): self { return $this->metadata(['zero_retention_required'=>$required]); }
     public function correlationId(string $id): self { $c=clone $this; $c->correlationId=$id; return $c; }
     public function ask(string $input): AgentResult { return $this->runtime->run($this->agent,$this->context(),$input); }
     public function resume(string $runId,string $approvalId): AgentResult { return $this->runtime->resume($this->agent,$this->context(),$runId,$approvalId); }

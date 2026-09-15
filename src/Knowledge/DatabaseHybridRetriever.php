@@ -18,7 +18,7 @@ final class DatabaseHybridRetriever implements Retriever
         $q = $this->db->table('ai_knowledge_chunks as c')
             ->join('ai_knowledge_documents as d', 'd.id', '=', 'c.document_id')
             ->where('c.tenant_id', (string) $context->tenantId)
-            ->select(['c.id as chunk_id','c.document_id','c.content','c.embedding','c.metadata','d.source_type','d.title']);
+            ->select(['c.id as chunk_id','c.document_id','c.content','c.embedding','c.metadata','d.source_type','d.title','d.metadata as document_metadata','d.source_updated_at']);
         if ($sources !== []) $q->whereIn('d.source_type', $sources);
         $rows = $q->orderByDesc('c.updated_at')->limit($candidateLimit)->get();
         if ($rows->isEmpty()) return [];
@@ -28,9 +28,11 @@ final class DatabaseHybridRetriever implements Retriever
             $lexical = $this->lexicalScore($terms, (string) $row->content);
             $stored = $row->embedding ? json_decode((string) $row->embedding, true) : [];
             $semantic = is_array($stored) && $stored !== [] && $vector !== [] ? $this->cosine($vector, $stored) : 0.0;
-            $score = max(0.0, min(1.0, ($semantic * .75) + ($lexical * .25)));
+            $docMeta=$row->document_metadata?json_decode((string)$row->document_metadata,true):[];
+            $authority=(float)($docMeta['_provenance']['authority']??0.5);
+            $score = max(0.0, min(1.0, ($semantic * .65) + ($lexical * .20) + ($authority * .15)));
             $results[] = new RetrievalResult((string) $row->content, $score, (string) $row->document_id, (string) $row->chunk_id, [
-                'source_type' => $row->source_type, 'title' => $row->title,
+                'source_type' => $row->source_type, 'title' => $row->title, 'authority'=>$authority, 'provenance'=>$docMeta['_provenance']??null, 'source_updated_at'=>$row->source_updated_at,
             ]);
         }
         usort($results, fn ($a, $b) => $b->score <=> $a->score);

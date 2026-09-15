@@ -1,0 +1,16 @@
+<?php
+
+namespace {{ namespace }};
+
+use Evolvex\AgentFabric\Contracts\Workflow;
+use Evolvex\AgentFabric\Workflow\WorkflowDefinition;
+
+final class {{ class }} implements Workflow
+{
+    public function name(): string { return '{{ class }}'; }
+    public function version(): string { return '1.0.0'; }
+    public function definition(): WorkflowDefinition
+    {
+        return new WorkflowDefinition($this->name(), $this->version());
+    }
+}

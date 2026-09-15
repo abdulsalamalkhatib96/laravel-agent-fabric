@@ -4,6 +4,12 @@ return [
     // name => AgentBlueprint class. Register dynamically via AgentFabric::registry() if preferred.
     'agents' => [],
 
+    // Extension registries. Keep vendor-specific integrations in plugins/packs.
+    'workflows' => [],
+    'connectors' => [],
+    'channels' => [],
+    'plugins' => [],
+
     'runtime' => [
         'max_steps' => (int) env('AGENT_FABRIC_MAX_STEPS', 20),
         'timeout' => (int) env('AGENT_FABRIC_TIMEOUT', 120),
@@ -64,5 +70,33 @@ return [
         'embeddings' => 'ai-embeddings',
         'evaluations' => 'ai-evaluations',
         'maintenance' => 'ai-maintenance',
+    ],
+
+    'governance' => [
+        'default_data_classification' => 'internal',
+        'enforce_model_region' => true,
+        'enforce_zero_retention' => true,
+    ],
+
+    'protocols' => [
+        'mcp' => ['enabled' => true],
+        'a2a' => ['enabled' => true],
+    ],
+
+    'workflows_runtime' => [
+        'max_steps' => 100,
+        'allow_parallel' => true,
+        'compensation' => true,
+    ],
+
+    'observability' => [
+        'tracing' => true,
+        'store_prompt_bodies' => false,
+        'store_tool_bodies' => false,
+    ],
+
+    'deployment' => [
+        'replay_side_effects' => false,
+        'shadow_side_effects' => false,
     ],
 ];

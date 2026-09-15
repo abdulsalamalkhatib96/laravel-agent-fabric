@@ -1,6 +1,6 @@
 {
   "name": "evolvex/laravel-agent-fabric",
-  "description": "Production AI agent operating system for Laravel: governed agents, model routing, knowledge, tools, approvals, memory, verification, durable runs, evaluations, and observability.",
+  "description": "Vendor-neutral AI agent application runtime for Laravel with governed tools, deterministic workflows, connectors, MCP/A2A, knowledge, deployments, evals, and observability.",
   "type": "library",
   "license": "MIT",
   "keywords": [
@@ -10,7 +10,11 @@
     "rag",
     "llm",
     "automation",
-    "governance"
+    "governance",
+    "workflow",
+    "mcp",
+    "a2a",
+    "connectors"
   ],
   "require": {
     "php": "^8.3",

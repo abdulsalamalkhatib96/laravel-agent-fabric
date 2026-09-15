@@ -13,27 +13,19 @@ final class WeightedModelRouter implements ModelRouter
 
     public function route(ModelRequest $request): ModelProfile
     {
-        $candidates = array_values(array_filter($this->catalog->all(), function (ModelProfile $profile) use ($request): bool {
-            foreach ($request->requiredCapabilities as $capability) {
-                if (! $profile->supports($capability)) return false;
-            }
-            return $profile->provider !== '' && $profile->model !== '';
+        $classification=$request->context->metadata['data_classification']??null;
+        $region=$request->context->metadata['required_region']??null;
+        $zero=(bool)($request->context->metadata['zero_retention_required']??false);
+        $candidates=array_values(array_filter($this->catalog->all(),function(ModelProfile $profile)use($request,$classification,$region,$zero):bool{
+            foreach($request->requiredCapabilities as $capability)if(!$profile->supports($capability))return false;
+            return $profile->provider!==''&&$profile->model!==''&&$profile->permits($classification,$region,$zero);
         }));
-
-        if ($candidates === []) { throw new RuntimeException('No configured AI model satisfies the requested capabilities.'); }
-
-        $weights = config('agent-fabric.routing.weights', []);
-        usort($candidates, fn (ModelProfile $a, ModelProfile $b) => $this->score($b, $weights) <=> $this->score($a, $weights));
+        if($candidates===[])throw new RuntimeException('No configured AI model satisfies capabilities and data-governance requirements.');
+        $weights=config('agent-fabric.routing.weights',[]);
+        usort($candidates,fn(ModelProfile $a,ModelProfile $b)=>$this->score($b,$weights)<=>$this->score($a,$weights));
         return $candidates[0];
     }
 
-    private function score(ModelProfile $p, array $w): float
-    {
-        return $p->quality * ($w['quality'] ?? .35)
-            + $p->toolAccuracy * ($w['tool_accuracy'] ?? .20)
-            + $p->reliability * ($w['reliability'] ?? .15)
-            + $p->latencyScore * ($w['latency'] ?? .10)
-            + $p->costScore * ($w['cost'] ?? .10)
-            + $p->historicalEval * ($w['historical_eval'] ?? .10);
-    }
+    private function score(ModelProfile $p,array $w):float
+    {return $p->quality*($w['quality']??.35)+$p->toolAccuracy*($w['tool_accuracy']??.20)+$p->reliability*($w['reliability']??.15)+$p->latencyScore*($w['latency']??.10)+$p->costScore*($w['cost']??.10)+$p->historicalEval*($w['historical_eval']??.10);}
 }

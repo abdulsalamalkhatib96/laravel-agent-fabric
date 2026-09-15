@@ -27,7 +27,9 @@ Choose a tool only from the provided tool catalog. Do not invent tools. For fact
 SYS
             ."\n\nAgent goal: {$agent->goal}"
             ."\n\nTool catalog:
-".json_encode($toolSpec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+".json_encode($toolSpec, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ."\n\nDeclared workflows (invoke only through registered tools):\n".json_encode($agent->workflows, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            ."\n\nDeclared connectors (never access directly; use tools):\n".json_encode($agent->connectors, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     public function prompt(string $input, array $knowledge, array $memory, array $transcript): string

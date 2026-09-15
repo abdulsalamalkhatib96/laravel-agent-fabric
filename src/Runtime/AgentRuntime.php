@@ -11,6 +11,7 @@ use Evolvex\AgentFabric\Contracts\ModelRouter;
 use Evolvex\AgentFabric\Contracts\Retriever;
 use Evolvex\AgentFabric\Contracts\RunRepository;
 use Evolvex\AgentFabric\Contracts\UsageMeter;
+use Evolvex\AgentFabric\Contracts\TraceRecorder;
 use Evolvex\AgentFabric\Contracts\Verifier;
 use Evolvex\AgentFabric\Data\AgentContext;
 use Evolvex\AgentFabric\Data\AgentResult;
@@ -32,7 +33,7 @@ final class AgentRuntime
         private readonly MemoryStore $memory, private readonly RunRepository $runs, private readonly UsageMeter $usage,
         private readonly BudgetManager $budget, private readonly Verifier $verifier, private readonly ToolExecutor $tools,
         private readonly PromptBuilder $prompts, private readonly EnvelopeParser $parser, private readonly PolicyEngine $policies,
-        private readonly ApprovalManager $approvals,
+        private readonly ApprovalManager $approvals, private readonly TraceRecorder $traces,
     ) {}
 
     public function run(AgentBlueprint $blueprint, AgentContext $context, string $input): AgentResult
@@ -73,16 +74,20 @@ final class AgentRuntime
     private function execute(string $runId, $definition, AgentContext $context, string $input, array $transcript, ?array $approvedCall): AgentResult
     {
         try {
+            $traceId=$context->correlationId??$runId;
+            $toolTrajectory=[];
+            $this->traces->record($traceId,'agent','started',['run_id'=>$runId,'agent'=>$definition->name,'version'=>$definition->version]);
             $this->policies->enforce($definition->policies,$context,'start',['input'=>$input]);
             $this->runs->transition($runId,RunStatus::Running,['started_at'=>now()]);
             $registry=$this->resolveTools($definition->tools);
             $knowledge=$this->retriever->retrieve($input,$context,$definition->knowledgeSources,(int)config('agent-fabric.knowledge.default_limit',8));
             $this->runs->addStep($runId,StepType::Retrieve,['query'=>$input],['count'=>count($knowledge),'results'=>array_map(fn($r)=>['document_id'=>$r->documentId,'chunk_id'=>$r->chunkId,'score'=>$r->score],$knowledge)]);
+            $this->traces->record($traceId,'retrieval','completed',['run_id'=>$runId,'count'=>count($knowledge)]);
             $memory=$this->memory->recall($context,$definition->name); $toolCalls=0; $same=[];
             if($approvedCall!==null){
                 $this->policies->enforce($definition->policies,$context,'tool',['tool'=>$approvedCall['tool'],'arguments'=>$approvedCall['arguments'],'approved'=>true]);
                 $result=$this->tools->execute($runId,$registry,$approvedCall['tool'],$context,$approvedCall['arguments'],$approvedCall['approval_id']);
-                $toolCalls++; $same[$approvedCall['tool']]=1;
+                $toolCalls++; $same[$approvedCall['tool']]=1; $toolTrajectory[]=$approvedCall['tool'];
                 $this->runs->addStep($runId,StepType::ToolResult,['tool'=>$approvedCall['tool'],'arguments'=>$approvedCall['arguments'],'approval_id'=>$approvedCall['approval_id']],['success'=>$result->success,'ambiguous'=>$result->ambiguous,'data'=>$result->data,'message'=>$result->message,'evidence'=>$result->evidence]);
                 if($result->ambiguous){$this->runs->transition($runId,RunStatus::Ambiguous);return new AgentResult($runId,RunStatus::Ambiguous,null,$result->evidence,null,['message'=>$result->message]);}
                 $transcript[]=['role'=>'tool','tool'=>$approvedCall['tool'],'success'=>$result->success,'data'=>$result->data,'message'=>$result->message,'evidence'=>$result->evidence];
@@ -92,10 +97,11 @@ final class AgentRuntime
                 $this->budget->assertCanContinue($runId,$context,$step,$toolCalls,$this->usage->cost($runId));
                 $request=new ModelRequest($this->prompts->system($definition,$registry->all()),$this->prompts->prompt($input,$knowledge,$memory,$transcript),$context,$definition->requiredCapabilities,['run_id'=>$runId],(int)config('agent-fabric.runtime.timeout',120));
                 $profile=$this->router->route($request); $response=$this->gateway->generate($request,$profile); $this->usage->record($runId,$response);
+                $this->traces->record($traceId,'model','completed',['run_id'=>$runId,'provider'=>$profile->provider,'model'=>$profile->model,'input_tokens'=>$response->inputTokens,'output_tokens'=>$response->outputTokens,'cost'=>$response->cost]);
                 $this->runs->addStep($runId,StepType::ModelCall,['provider'=>$profile->provider,'model'=>$profile->model],['text'=>$response->text],['input_tokens'=>$response->inputTokens,'output_tokens'=>$response->outputTokens,'cost'=>$response->cost]);
                 $envelope=$this->parser->parse($response->text); $transcript[]=['role'=>'model','envelope'=>['type'=>$envelope->type,'answer'=>$envelope->answer,'tool'=>$envelope->tool,'arguments'=>$envelope->arguments,'citations'=>$envelope->citations]];
                 if($envelope->type==='tool') {
-                    $toolCalls++; $same[$envelope->tool]=($same[$envelope->tool]??0)+1;
+                    $toolCalls++; $same[$envelope->tool]=($same[$envelope->tool]??0)+1; $toolTrajectory[]=$envelope->tool;
                     if($same[$envelope->tool]>(int)config('agent-fabric.budgets.max_same_tool_calls',3)) throw new \RuntimeException("Repeated tool loop detected for [{$envelope->tool}].");
                     $this->policies->enforce($definition->policies,$context,'tool',['tool'=>$envelope->tool,'arguments'=>$envelope->arguments]);
                     try {
@@ -105,6 +111,7 @@ final class AgentRuntime
                         return new AgentResult($runId,RunStatus::WaitingForApproval,null,[],null,['approval_id'=>$e->approvalId,'reason'=>$e->getMessage()]);
                     }
                     $this->runs->addStep($runId,StepType::ToolResult,['tool'=>$envelope->tool,'arguments'=>$envelope->arguments],['success'=>$result->success,'ambiguous'=>$result->ambiguous,'data'=>$result->data,'message'=>$result->message,'evidence'=>$result->evidence]);
+                    $this->traces->record($traceId,'tool','completed',['run_id'=>$runId,'tool'=>$envelope->tool,'success'=>$result->success,'ambiguous'=>$result->ambiguous]);
                     if($result->ambiguous){$this->runs->transition($runId,RunStatus::Ambiguous); return new AgentResult($runId,RunStatus::Ambiguous,null,$result->evidence,null,['message'=>$result->message]);}
                     $transcript[]=['role'=>'tool','tool'=>$envelope->tool,'success'=>$result->success,'data'=>$result->data,'message'=>$result->message,'evidence'=>$result->evidence];
                     continue;
@@ -116,10 +123,10 @@ final class AgentRuntime
                 $this->runs->addStep($runId,StepType::Verification,['answer'=>$envelope->answer],['status'=>$verification->status->value,'score'=>$verification->score,'issues'=>$verification->issues]);
                 if(!$verification->passed()) { $transcript[]=['role'=>'verifier','issues'=>$verification->issues,'instruction'=>'Correct the answer using evidence; do not invent facts.']; continue; }
                 foreach($envelope->memory as $item){if(is_array($item)&&isset($item['key'],$item['value']))$this->memory->remember($context,$definition->name,MemoryKind::Semantic,(string)$item['key'],$item['value'],(float)($item['confidence']??.8));}
-                $this->runs->transition($runId,RunStatus::Completed,['output'=>$envelope->answer]); return new AgentResult($runId,RunStatus::Completed,$envelope->answer,$evidence,$verification,['provider'=>$profile->provider,'model'=>$profile->model]);
+                $this->runs->transition($runId,RunStatus::Completed,['output'=>$envelope->answer]); $this->traces->record($traceId,'agent','completed',['run_id'=>$runId,'verification'=>$verification->status->value]); return new AgentResult($runId,RunStatus::Completed,$envelope->answer,$evidence,$verification,['provider'=>$profile->provider,'model'=>$profile->model,'tools'=>$toolTrajectory]);
             }
         } catch(Throwable $e){
-            $this->runs->transition($runId,RunStatus::Failed,['failure_code'=>$e::class,'failure_message'=>$e->getMessage()]); throw $e;
+            $this->runs->transition($runId,RunStatus::Failed,['failure_code'=>$e::class,'failure_message'=>$e->getMessage()]); if(isset($traceId))$this->traces->record($traceId,'agent','failed',['run_id'=>$runId,'exception'=>$e::class,'message'=>$e->getMessage()]); throw $e;
         }
     }
 

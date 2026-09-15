@@ -14,5 +14,8 @@ final readonly class AgentDefinition
         public array $policies = [],
         public array $requiredCapabilities = [],
         public array $metadata = [],
+        public array $workflows = [],
+        public array $connectors = [],
+        public array $channels = [],
     ) {}
 }
