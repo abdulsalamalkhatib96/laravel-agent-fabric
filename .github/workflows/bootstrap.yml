@@ -1,4 +1,5 @@
 name: Publish Laravel Agent Fabric V2
+# final verified publish
 
 on:
   push:
