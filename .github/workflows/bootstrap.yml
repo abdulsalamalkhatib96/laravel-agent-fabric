@@ -34,7 +34,8 @@ jobs:
             .bootstrap/patch-006a.b64
             .bootstrap/patch-006b.b64
             .bootstrap/patch-007a.b64
-            .bootstrap/patch-007b.b64
+            .bootstrap/patch-007b0.b64
+            .bootstrap/patch-007b1.b64
             .bootstrap/patch-008.b64
             .bootstrap/patch-009.b64
             .bootstrap/patch-010.b64
