@@ -1,4 +1,4 @@
-# retry after verified archive repair
+# retry after all archive chunks verified
 name: Bootstrap package source
 
 on:
