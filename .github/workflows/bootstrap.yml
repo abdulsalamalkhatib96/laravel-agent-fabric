@@ -1,0 +1,53 @@
+name: Bootstrap package source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/bootstrap.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+
+      - name: Rebuild and verify source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .bootstrap/tar-*.b64 | tr -d '\n\r' | base64 -d > /tmp/laravel-agent-fabric.tar.gz
+          echo "f0e932b99eaba32e43cf9806ec55fbe528fb594b1ff9345bb764cccf67cd0919  /tmp/laravel-agent-fabric.tar.gz" | sha256sum -c -
+          rm -rf /tmp/agent-fabric-src
+          mkdir -p /tmp/agent-fabric-src
+          tar -xzf /tmp/laravel-agent-fabric.tar.gz -C /tmp/agent-fabric-src
+          test "$(find /tmp/agent-fabric-src/laravel-agent-fabric -type f | wc -l | tr -d ' ')" = "124"
+
+      - name: Publish source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a /tmp/agent-fabric-src/laravel-agent-fabric/. .
+          rm -rf .bootstrap
+          php scripts/smoke.php
+          rm -f .github/workflows/bootstrap.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No source changes to publish."
+            exit 0
+          fi
+
+          git commit -m "feat: publish complete Laravel Agent Fabric package"
+          git push origin HEAD:main
