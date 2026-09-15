@@ -1,3 +1,4 @@
+# retry after verified archive repair
 name: Bootstrap package source
 
 on:
