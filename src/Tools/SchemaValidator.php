@@ -35,8 +35,12 @@ final class SchemaValidator
         }
         if ($type !== null) $this->assertType((string) $type, $value, $path);
 
-        if ($type === 'object' || (is_array($value) && ! array_is_list($value))) {
-            if (! is_array($value)) return;
+        $objectShape = $type === 'object'
+            || isset($schema['properties'])
+            || isset($schema['required'])
+            || array_key_exists('additionalProperties', $schema);
+
+        if ($objectShape && is_array($value)) {
             foreach ((array) ($schema['required'] ?? []) as $required) if (! array_key_exists($required, $value)) throw new InvalidArgumentException("{$path}.{$required} is required.");
             $properties = (array) ($schema['properties'] ?? []);
             foreach ($value as $key => $child) {
