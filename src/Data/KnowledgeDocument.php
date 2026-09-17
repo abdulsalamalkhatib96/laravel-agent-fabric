@@ -16,6 +16,10 @@ final readonly class KnowledgeDocument
         public ?string $sourceUpdatedAt = null,
         public ?KnowledgeProvenance $provenance = null,
         public array $entities = [],
+        public string $lifecycleStatus = 'active',
+        public array $acl = [],
+        public ?string $effectiveFrom = null,
+        public ?string $effectiveUntil = null,
     ) {}
 
     public function contentHash(): string { return hash('sha256', $this->content); }

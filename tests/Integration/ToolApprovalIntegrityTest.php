@@ -27,8 +27,8 @@ final class ToolApprovalIntegrityTest extends TestCase
     public function test_approval_is_bound_to_exact_tool_arguments_and_execution_is_idempotent(): void
     {
         $db=$this->app->make(ConnectionInterface::class);
-        $approvals=new DatabaseApprovalManager($db);
-        $executor=new ToolExecutor(new DefaultToolAuthorizer, $approvals, $db, new SchemaValidator);
+        $approvals=$this->app->make(DatabaseApprovalManager::class);
+        $executor=$this->app->make(ToolExecutor::class);
         $registry=new ToolRegistry;
         $tool=new TestFinancialTool;
         $registry->register($tool);

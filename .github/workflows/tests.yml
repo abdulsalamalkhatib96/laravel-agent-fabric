@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  tests:
+  package:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -17,9 +17,61 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, sqlite3, pdo_sqlite
+          extensions: mbstring, sqlite3, pdo_sqlite, pcntl
           coverage: none
       - run: composer require "illuminate/support:${{ matrix.laravel }}" --no-update
       - run: composer update --prefer-dist --no-interaction
       - run: composer test
+      - run: composer analyse
+      - run: composer lint
       - run: php scripts/smoke.php
+
+  database-portability:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: agent_fabric
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -psecret"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: secret
+          POSTGRES_DB: agent_fabric
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d agent_fabric"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, mysql, pgsql]
+    env:
+      AGENT_FABRIC_TEST_DB: ${{ matrix.database }}
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: agent_fabric
+      MYSQL_USER: root
+      MYSQL_PASSWORD: secret
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: agent_fabric
+      PGUSER: postgres
+      PGPASSWORD: secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, sqlite3, pdo_sqlite, pdo_mysql, pdo_pgsql, pcntl
+          coverage: none
+      - run: composer require "illuminate/support:13.*" --no-update
+      - run: composer update --prefer-dist --no-interaction
+      - run: vendor/bin/phpunit tests/Integration --testdox

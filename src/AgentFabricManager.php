@@ -19,6 +19,12 @@ use Evolvex\AgentFabric\Plugins\PluginRegistry;
 use Evolvex\AgentFabric\Runtime\AgentRuntime;
 use Evolvex\AgentFabric\Workflow\WorkflowEngine;
 use Evolvex\AgentFabric\Workflow\WorkflowRegistry;
+use Evolvex\AgentFabric\Contracts\Outbox;
+use Evolvex\AgentFabric\Memory\MemoryGovernanceService;
+use Evolvex\AgentFabric\Observability\QueueHealthService;
+use Evolvex\AgentFabric\Policies\ToolGovernanceRegistry;
+use Evolvex\AgentFabric\Policies\ToolPolicy;
+use Evolvex\AgentFabric\RemoteOperations\RemoteOperationCoordinator;
 
 final class AgentFabricManager
 {
@@ -27,6 +33,8 @@ final class AgentFabricManager
         private readonly RunRepository $runs,private readonly FeedbackRecorder $feedback,private readonly ConnectorRegistry $connectors,
         private readonly ChannelRegistry $channels,private readonly WorkflowRegistry $workflows,private readonly WorkflowEngine $workflowEngine,private readonly PluginRegistry $plugins,
         private readonly DatabaseDeploymentManager $deployments,private readonly ReplayService $replays,
+        private readonly Outbox $outbox,private readonly MemoryGovernanceService $memoryGovernance,private readonly QueueHealthService $health,
+        private readonly ToolGovernanceRegistry $toolPolicies,private readonly RemoteOperationCoordinator $remoteOperations,
     ){}
     public function agent(string $name): PendingAgentRun{return new PendingAgentRun($this->agents->get($name),$this->runtime);}
     public function registry(): AgentRegistry{return $this->agents;}
@@ -34,6 +42,13 @@ final class AgentFabricManager
     public function channels(): ChannelRegistry{return $this->channels;}
     public function workflows(): WorkflowRegistry{return $this->workflows;}
     public function plugins(): PluginRegistry{return $this->plugins;}
+
+
+    public function outbox(): Outbox{return $this->outbox;}
+    public function memoryGovernance(): MemoryGovernanceService{return $this->memoryGovernance;}
+    public function health(): array{return $this->health->snapshot();}
+    public function remoteOperations(): RemoteOperationCoordinator{return $this->remoteOperations;}
+    public function toolPolicy(ToolPolicy $policy): self{$policy->register($this->toolPolicies);return $this;}
 
     public function deployments(): DatabaseDeploymentManager{return $this->deployments;}
     public function replay(string $runId,?string $agent=null): AgentResult{return $this->replays->replay($runId,$agent);}

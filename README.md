@@ -27,6 +27,50 @@ The V2 architecture is intentionally **vendor-neutral** and **domain-extensible*
 - Database-backed traces suitable for OpenTelemetry-style export
 - Artisan commands, migrations, examples, tests, and smoke tests
 
+## Production hardening in 0.3
+
+The 0.3 line focuses on correctness under failure, concurrency, external side effects, multi-tenant governance, and operations rather than adding another thin agent abstraction.
+
+### Durable execution and messaging
+
+- Distributed database leases protect agent runs, workflow runs, workflow steps, and sequence allocation from concurrent workers.
+- Durable workflows support waiting, retrying, exponential backoff, cancellation, ambiguity, compensation, and persisted attempts.
+- Transactional outbox/inbox primitives provide deduplicated at-least-once delivery without publishing business events before the database commit.
+- Remote operations persist idempotency and reconciliation state so network timeouts can become `ambiguous` instead of unsafe blind retries.
+- Circuit breakers and fixed-window quotas protect models, tools, MCP servers, actors, agents, and tenants from cascading failure or runaway usage.
+
+### Model and context reliability
+
+- The resilient model gateway classifies timeout, rate limit, provider outage, context overflow, safety refusal, malformed output, and unknown failures separately.
+- Model routing can blend configured quality/tool/reliability scores with live production telemetry.
+- Context compaction budgets system instructions, retrieved knowledge, memory, transcript, and output reserve against the selected model context window.
+- Malformed control envelopes receive a bounded repair attempt instead of silently entering an infinite loop.
+- Prompt versions are fingerprinted and can be activated or rolled back explicitly.
+
+### Security and governance
+
+- PII detection/redaction hooks cover email, phone, payment-card-like numbers, bearer tokens, and common secret formats.
+- Prompt-injection inspection marks untrusted user, retrieval, remote-tool, and protocol content and can block high-risk user input.
+- Knowledge documents support lifecycle, effective dates, source authority, ACLs, clearance, roles, departments, and tenant isolation.
+- Tool policies support deny/allow rules, approval conditions, and amount thresholds.
+- MCP access can be restricted by server fingerprint, trust level, allowlist, and quota.
+- A2A delegation can use short-lived scoped delegation tokens rather than forwarding the caller's full authority.
+- Semantic memory can enter an approval lifecycle before it becomes durable agent memory.
+
+### Knowledge and retrieval
+
+Agent Fabric ships a database-backed vector store plus transport adapters for Qdrant, Pinecone, and OpenSearch. Retrieval combines semantic similarity, BM25-style lexical relevance, source authority, ACL/lifecycle checks, and prompt-injection risk. Large installations can replace the store through the `VectorStore` contract without changing the agent runtime.
+
+### Observability and operations
+
+- Database traces cover agent, retrieval, model, tool, and workflow execution.
+- Optional OpenTelemetry export is available when the OpenTelemetry API is installed.
+- Model observations capture latency, success, token usage, and cost for routing feedback.
+- Queue/runtime health, outbox processing, and remote-operation reconciliation have dedicated Artisan commands.
+- CI exercises Laravel 12/13 on PHP 8.3/8.4 plus SQLite, MySQL, and PostgreSQL integration suites.
+
+See `docs/RELIABILITY.md`, `docs/OPERATIONS.md`, and `docs/VECTOR-STORES.md` for production guidance.
+
 ## Requirements
 
 - PHP 8.3+

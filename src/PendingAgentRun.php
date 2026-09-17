@@ -19,6 +19,10 @@ final class PendingAgentRun
     public function dataClassification(string $classification): self { return $this->metadata(['data_classification'=>$classification]); }
     public function region(string $region): self { return $this->metadata(['required_region'=>$region]); }
     public function requireZeroRetention(bool $required=true): self { return $this->metadata(['zero_retention_required'=>$required]); }
+    public function role(string $role): self { return $this->metadata(['role'=>$role]); }
+    public function department(string $department): self { return $this->metadata(['department'=>$department]); }
+    public function clearance(string $clearance): self { return $this->metadata(['clearance'=>$clearance]); }
+    public function executionMode(string $mode): self { if(!in_array($mode,['live','simulate'],true))throw new \InvalidArgumentException('Execution mode must be live or simulate.'); return $this->metadata(['execution_mode'=>$mode]); }
     public function correlationId(string $id): self { $c=clone $this; $c->correlationId=$id; return $c; }
     public function ask(string $input): AgentResult { return $this->runtime->run($this->agent,$this->context(),$input); }
     public function resume(string $runId,string $approvalId): AgentResult { return $this->runtime->resume($this->agent,$this->context(),$runId,$approvalId); }
